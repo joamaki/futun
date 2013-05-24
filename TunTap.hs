@@ -1,21 +1,16 @@
 {-# LANGUAGE CPP, ForeignFunctionInterface #-}
 module TunTap (openTun) where
 
-import Foreign.C.Types
-import Foreign.Marshal.Alloc
---import Foreign.Marshal.Array
-import Foreign.Ptr
 import Foreign.C.String
-
+import Foreign.C.Types
 import System.Posix.Types
 
 foreign import ccall unsafe "tuntap.h open_tun"
-  c_open_tun :: Ptr CChar -> IO CInt
+  c_open_tun :: CString -> IO CInt
 
-openTun :: IO (String, Fd)
-openTun = do
-  arr <- mallocBytes 256 :: IO (Ptr CChar)
-  fd <- c_open_tun arr
-  str <- peekCString arr
-  free arr
-  return $ (str, Fd fd)
+openTun :: String -> IO (Maybe Fd)
+openTun name = do
+  fd <- withCString name $ \cname -> c_open_tun cname
+  return $ if fd < 0
+    then Nothing
+    else Just (Fd fd)

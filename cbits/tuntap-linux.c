@@ -6,8 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static int tuncount = 0;
-
 int open_tun(char *name)
 {
     int fd = open("/dev/net/tun", O_RDWR);
@@ -15,9 +13,6 @@ int open_tun(char *name)
         perror("open");
         return -1;
     }
-
-    snprintf(name, sizeof(name)-1, "tun%d", tuncount);
-    tuncount++;
 
     struct ifreq ifr;
     strncpy(ifr.ifr_name, name, IFNAMSIZ);

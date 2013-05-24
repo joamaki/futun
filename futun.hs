@@ -13,6 +13,7 @@ import System.IO.Unsafe
 import System.Posix.IO
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
+import Data.Maybe
 
 import qualified TunTap as TunTap
 
@@ -57,19 +58,23 @@ usage :: IO ()
 usage = do
   prog <- getProgName
   putStrLn $ "usage: "
-  putStrLn $ "\t" ++ prog ++ " server [port]"
-  putStrLn $ "\t" ++ prog ++ " client [hostname] [port]"
+  putStrLn $ "\t" ++ prog ++ " server [interface] [port]"
+  putStrLn $ "\t" ++ prog ++ " client [interface] [hostname] [port]"
   exitSuccess
 
-openTunHandle :: IO (String, Handle)
-openTunHandle = do
-  (tunif, tunfd) <- TunTap.openTun
-  h <- fdToHandle tunfd
-  hSetBuffering h NoBuffering
-  return $ (tunif, h)
+openTunHandle :: String -> IO (Maybe Handle)
+openTunHandle name = do
+  mfd <- TunTap.openTun name
+  case mfd of 
+    Nothing -> 
+      return Nothing
+    Just fd -> do
+      h <- fdToHandle fd
+      hSetBuffering h NoBuffering
+      return $ Just h
 
-server :: ServiceName -> IO ()
-server port = do
+server :: Handle -> ServiceName -> IO ()
+server tunh port = do
   let hints = defaultHints { addrFlags = [AI_PASSIVE] } -- listen on all
   ais <- getAddrInfo (Just hints) Nothing (Just port)
   sock <- socket (addrFamily (head ais)) Datagram defaultProtocol
@@ -79,8 +84,6 @@ server port = do
   (hello, addr) <- recvFrom sock 1024
   when ((B8.unpack hello) /= "hello") $ error "Received unknown hello!"
   
-  (iface, tunh) <- openTunHandle
-
   _ <- forkChild . forever $ do
     buf <- recv sock 8192
     B.hPut tunh buf
@@ -89,17 +92,15 @@ server port = do
     buf <- B.hGetSome tunh 8192
     sendAllTo sock buf addr
 
-  putStrLn $ "Tunnel " ++ iface ++ " opened to " ++ (show addr)
+  putStrLn $ "Tunnel opened to " ++ (show addr)
 
-client :: HostName -> ServiceName -> IO ()
-client hostname port = do
+client :: Handle -> HostName -> ServiceName -> IO ()
+client tunh hostname port = do
   ais <- getAddrInfo Nothing (Just hostname) (Just port)
   let saddr = addrAddress $ head ais
   sock <- socket (addrFamily (head ais)) Datagram defaultProtocol
   connect sock saddr
   sendAll sock (B8.pack "hello")
-
-  (iface, tunh) <- openTunHandle
 
   _ <- forkChild . forever $ do
     buf <- recv sock 8192
@@ -109,15 +110,20 @@ client hostname port = do
     buf <- B.hGetSome tunh 8192
     sendAll sock buf
 
-  putStrLn $ "Tunnel " ++ iface ++ " opened to " ++ (show saddr)
+  putStrLn $ "Tunnel opened to " ++ (show saddr)
 
 main :: IO ()
 main = do
   argv <- getArgs
-  when (length argv < 1) $ usage
+  when (length argv < 2) $ usage
+  tunh <- openTunHandle (argv !! 1)
+  when (isNothing tunh) $ do
+    putStrLn $ "Could not open tunnel interface " ++ (argv !! 1) ++ "!"
+    exitSuccess
+   
   case (argv !! 0) of
-    "server" -> server (argv !! 1)
-    "client"-> client (argv !! 1) (argv !! 2)
+    "server" -> server (fromJust tunh) (argv !! 2)
+    "client"-> client (fromJust tunh) (argv !! 2) (argv !! 3)
     _ -> usage
 
   waitForChildren
