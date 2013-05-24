@@ -1,5 +1,11 @@
-Futun - Simple UDP-based tunneling software on top of TUN/TAP.
-============================================================
+# Futun - Simple IP-over-UDP tunnel using TUNTAP
+         
+Futun is a simple IP-over-UDP tunnel for
+minimal-setup tunneling. 
+
+It uses the TUN/TAP
+<http://en.wikipedia.org/wiki/TUN/TAP> device and
+works on GNU/Linux and Mac OS X.
 
 ## Compiling
 
